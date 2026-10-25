@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+*/.env
+
+# Build output
+build/
+dist/
+coverage/
+
+# Logs
+npm-debug.log*
+yarn-error.log
+*.log
+
+# OS files
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Platform / hosting build glue (not part of the PersonLens source)
+.emergent/
+memory/
+test_reports/
+tests/
+test_result.md
+backend/server.py
+backend/requirements.txt
+backend/pytest.ini
+backend/tests/
+frontend/plugins/
+frontend/craco.config.js
+frontend/node_modules/.cache/default-development/12.pack
