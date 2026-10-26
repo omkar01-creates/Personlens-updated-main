@@ -1,8 +1,11 @@
 
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 const User = require("../models/User");
+
+// Initialize Resend for email delivery.
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Check that required secrets exist and are sufficiently strong.
 function requireSecret(name) {
@@ -40,15 +43,6 @@ function escapeHtml(value) {
     return entities[character];
   });
 }
-
-// Configure email delivery using your Gmail app password.
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
 
 // Register a new user.
 const registerUser = async (req, res) => {
@@ -93,7 +87,9 @@ const registerUser = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({ email: cleanEmail });
+    const existingUser = await User.findOne({
+      email: cleanEmail,
+    });
 
     if (existingUser) {
       return res.status(409).json({
@@ -115,11 +111,11 @@ const registerUser = async (req, res) => {
       message: "Registration successful.",
       token,
       user: {
-    _id: user._id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-  },
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
     });
   } catch (error) {
     console.error("Registration error:", error.message);
@@ -154,7 +150,9 @@ const loginUser = async (req, res) => {
 
     const cleanEmail = email.trim().toLowerCase();
 
-    const user = await User.findOne({ email: cleanEmail });
+    const user = await User.findOne({
+      email: cleanEmail,
+    });
 
     if (!user) {
       return res.status(401).json({
@@ -175,28 +173,23 @@ const loginUser = async (req, res) => {
 
     const token = createToken(user);
 
-   
-    
-console.log("Login controller file:", __filename);
-console.log("User role from database:", user.role);
+    return res.status(200).json({
+      message: "Login successful.",
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error("Login error:", error.message);
 
-return res.status(200).json({
-  message: "Login successful.",
-  token,
-  user: {
-    _id: user._id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-  },
-});
-} catch (error) {
-  console.error("Login error:", error.message);
-
-  return res.status(500).json({
-    message: "Unable to log in. Please try again later.",
-  });
-}
+    return res.status(500).json({
+      message: "Unable to log in. Please try again later.",
+    });
+  }
 };
 
 // Get the currently authenticated user's information.
@@ -220,7 +213,7 @@ const getMe = async (req, res) => {
   }
 };
 
-// Send a password-reset email.
+// Send a password-reset email using Resend.
 const forgotPassword = async (req, res) => {
   const genericMessage =
     "If an account exists with this email, password reset instructions will be sent.";
@@ -234,8 +227,15 @@ const forgotPassword = async (req, res) => {
       });
     }
 
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error("RESEND_API_KEY is not configured.");
+    }
+
     const cleanEmail = email.trim().toLowerCase();
-    const user = await User.findOne({ email: cleanEmail });
+
+    const user = await User.findOne({
+      email: cleanEmail,
+    });
 
     // Use the same response whether or not the account exists.
     if (!user) {
@@ -251,6 +251,16 @@ const forgotPassword = async (req, res) => {
       throw new Error("FRONTEND_URL is not configured.");
     }
 
+    // Only allow HTTPS frontend URLs in production.
+    const parsedFrontendUrl = new URL(frontendUrl);
+
+    if (
+      process.env.NODE_ENV === "production" &&
+      parsedFrontendUrl.protocol !== "https:"
+    ) {
+      throw new Error("FRONTEND_URL must use HTTPS in production.");
+    }
+
     const resetToken = jwt.sign(
       {
         id: user._id.toString(),
@@ -264,9 +274,10 @@ const forgotPassword = async (req, res) => {
       `${frontendUrl.replace(/\/+$/, "")}` +
       `/reset-password?token=${encodeURIComponent(resetToken)}`;
 
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: user.email,
+    const { data, error } = await resend.emails.send({
+      // Resend's test sender has recipient restrictions.
+      from: "PersonLens <onboarding@resend.dev>",
+      to: [user.email],
       subject: "PersonLens Password Reset",
       text:
         `Hello ${user.name},\n\n` +
@@ -283,6 +294,17 @@ const forgotPassword = async (req, res) => {
         <p>If you did not request this, you can ignore this email.</p>
       `,
     });
+
+    if (error) {
+      console.error("Resend email error:", error);
+      throw new Error("Password reset email could not be sent.");
+    }
+
+    if (!data || !data.id) {
+      throw new Error("Resend did not confirm the email request.");
+    }
+
+    console.log("Password reset email accepted by Resend.");
 
     return res.status(200).json({
       message: genericMessage,
@@ -359,7 +381,8 @@ const resetPassword = async (req, res) => {
       error.name === "NotBeforeError"
     ) {
       return res.status(400).json({
-        message: "Reset link is invalid or expired. Please request a new one.",
+        message:
+          "Reset link is invalid or expired. Please request a new one.",
       });
     }
 
