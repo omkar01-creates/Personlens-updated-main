@@ -115,10 +115,11 @@ const registerUser = async (req, res) => {
       message: "Registration successful.",
       token,
       user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-      },
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  },
     });
   } catch (error) {
     console.error("Registration error:", error.message);
@@ -174,22 +175,28 @@ const loginUser = async (req, res) => {
 
     const token = createToken(user);
 
-    return res.status(200).json({
-      message: "Login successful.",
-      token,
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-      },
-    });
-  } catch (error) {
-    console.error("Login error:", error.message);
+   
+    
+console.log("Login controller file:", __filename);
+console.log("User role from database:", user.role);
 
-    return res.status(500).json({
-      message: "Unable to log in. Please try again later.",
-    });
-  }
+return res.status(200).json({
+  message: "Login successful.",
+  token,
+  user: {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  },
+});
+} catch (error) {
+  console.error("Login error:", error.message);
+
+  return res.status(500).json({
+    message: "Unable to log in. Please try again later.",
+  });
+}
 };
 
 // Get the currently authenticated user's information.
